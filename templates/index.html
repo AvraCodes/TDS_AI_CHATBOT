@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TDS Virtual TA</title>
+</head>
+<body>
+  <h2>Ask a Question</h2>
+
+  <input type="text" id="question" placeholder="Enter your question" size="60">
+  <button onclick="askQuestion()">Submit</button>
+
+  <pre id="response" style="white-space: pre-wrap; margin-top: 20px;"></pre>
+
+  <script>
+    const API_URL = "https://tds-project1-31mu.onrender.com/api";
+
+    async function askQuestion() {
+      const question = document.getElementById("question").value;
+      const responseDiv = document.getElementById("response");
+
+      if (!question.trim()) {
+        responseDiv.innerText = "❗ Please enter a question.";
+        return;
+      }
+
+      responseDiv.innerText = "⏳ Waiting for answer...";
+
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: question })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          responseDiv.innerText = "✅ Answer:\n\n" + data.answer;
+
+          if (data.links && data.links.length > 0) {
+            responseDiv.innerText += "\n\n🔗 Links:\n";
+            data.links.forEach(link => {
+              responseDiv.innerText += `- ${link.url}\n`;
+            });
+          }
+        } else {
+          const errorText = await res.text();
+          responseDiv.innerText = `❌ Error ${res.status}: ${errorText}`;
+        }
+      } catch (err) {
+        responseDiv.innerText = "❌ Failed to fetch answer. Check your internet or server logs.";
+        console.error(err);
+      }
+    }
+  </script>
+</body>
+</html>
