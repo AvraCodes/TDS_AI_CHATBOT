@@ -1,24 +1,23 @@
 # app.py
 import os
+import glob
 import json
 import sqlite3
 import numpy as np
 import re
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Body, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
 import aiohttp
 import asyncio
 import logging
 import base64
-from fastapi.responses import JSONResponse
-import uvicorn
-import traceback
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Body, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, JSONResponse
 from dotenv import load_dotenv
-import glob
-import google.generativeai as genai
-import openai
+import traceback
+import uvicorn
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,7 +33,7 @@ API_KEY = os.getenv("API_KEY")  # Get API key from environment variable
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-genai.configure(api_key=GEMINI_API_KEY)
+
 
 # Models
 class QueryRequest(BaseModel):
@@ -169,7 +168,7 @@ async def get_embedding(text, max_retries=3):
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": "text-embedding-3-small",
+                "model": "text-embedding-3-small",  # This must match your DB embedding model
                 "input": text
             }
             
