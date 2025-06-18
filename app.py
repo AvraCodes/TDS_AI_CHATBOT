@@ -1,3 +1,4 @@
+# app.py
 import os
 import glob
 import json
@@ -769,29 +770,3 @@ async def gemini_test():
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
-
-        discourse_embeddings = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM markdown_chunks WHERE embedding IS NOT NULL")
-        markdown_embeddings = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        return {
-            "status": "healthy", 
-            "database": "connected", 
-            "api_key_set": bool(API_KEY),
-            "discourse_chunks": discourse_count,
-            "markdown_chunks": markdown_count,
-            "discourse_embeddings": discourse_embeddings,
-            "markdown_embeddings": markdown_embeddings
-        }
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"status": "unhealthy", "error": str(e), "api_key_set": bool(API_KEY)}
-        )
-
-if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True) 
