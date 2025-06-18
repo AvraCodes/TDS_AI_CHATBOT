@@ -1,44 +1,45 @@
-# app.py
+# Main App
+#Virtual TA
 import os
-import glob
 import json
 import sqlite3
 import numpy as np
 import re
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Body
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 import aiohttp
 import asyncio
 import logging
 import base64
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Body, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
-from dotenv import load_dotenv
-import traceback
+from fastapi.responses import JSONResponse
 import uvicorn
+import traceback
+from dotenv import load_dotenv
+
+
+
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
+
 # Constants
 DB_PATH = "knowledge_base.db"
-SIMILARITY_THRESHOLD = 0.68  # Lowered threshold for better recall
+SIMILARITY_THRESHOLD = 0.50 # Lowered threshold for better recall
 MAX_RESULTS = 10  # Increased to get more context
 load_dotenv()
 MAX_CONTEXT_CHUNKS = 4  # Increased number of chunks per source
 API_KEY = os.getenv("API_KEY")  # Get API key from environment variable
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-
 
 # Models
 class QueryRequest(BaseModel):
     question: str
-    image: Optional[str] = None  # Base64 encoded image
+    image: Optional[str] = None  # For Base64 encoded image
 
 class LinkInfo(BaseModel):
     url: str
@@ -48,18 +49,8 @@ class QueryResponse(BaseModel):
     answer: str
     links: List[LinkInfo]
 
-# Load Discourse posts
-with open("discourse_posts.json") as f:
-    discourse_posts = json.load(f)
-
-# Load course content (markdown files)
-course_docs = []
-for md_file in glob.glob("tds_pages_md/*.md"):
-    with open(md_file, encoding="utf-8") as f:
-        course_docs.append({"filename": md_file, "content": f.read()})
-
 # Initialize FastAPI app
-app = FastAPI(title="RAG Query API", description="API for querying the RAG knowledge base")
+app = FastAPI(title="Virtual TA", description="API for querying the RAG knowledge base to help answer questions  - By 24f3000209")
 
 # Add CORS middleware
 app.add_middleware(
@@ -69,6 +60,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 
 # Verify API key is set
 if not API_KEY:
@@ -168,7 +161,7 @@ async def get_embedding(text, max_retries=3):
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": "text-embedding-3-small",  # This must match your DB embedding model
+                "model": "text-embedding-3-small",
                 "input": text
             }
             
@@ -481,7 +474,7 @@ async def generate_answer(question, relevant_results, max_retries=2):
                 raise HTTPException(status_code=500, detail=error_msg)
             await asyncio.sleep(2)  # Wait before retry
 
-# Function to process multimodal content (text + image)
+# Function to process multimodal content
 async def process_multimodal_query(question, image_base64):
     if not API_KEY:
         error_msg = "API_KEY environment variable not set"
@@ -611,113 +604,102 @@ def parse_llm_response(response):
             "links": []
         }
 
-# Simple keyword search; replace with embedding search for better results
-def search_docs(question, docs, top_k=3):
-    results = []
-    for doc in docs:
-        if question.lower() in doc["content"].lower():
-            results.append(doc)
-    return results[:top_k]
-
-def search_posts(question, posts, top_k=3):
-    results = []
-    for post in posts:
-        if question.lower() in post["content"].lower():
-            results.append(post)
-    return results[:top_k]
-
-def build_context(question):
-    # Get relevant course docs and posts
-    docs = search_docs(question, course_docs)
-    posts = search_posts(question, discourse_posts)
-    context = ""
-    for doc in docs:
-        context += f"\n[Course] {doc['filename']}:\n{doc['content'][:500]}\n"
-    for post in posts:
-        context += f"\n[Discourse] {post['url']}:\n{post['content'][:500]}\n"
-    return context, posts
-
-@app.post("/api/")
-async def answer_question(req: QueryRequest):
-    context, posts = build_context(req.question)
-    prompt = (
-        f"You are a helpful teaching assistant. "
-        f"Answer the following question using the provided context. "
-        f"Question: {req.question}\n"
-        f"Context:\n{context}\n"
-        f"Answer:"
-    )
-    model = genai.GenerativeModel("gemini-pro")
-    response = await asyncio.to_thread(model.generate_content, prompt)
-    answer = response.text
-    links = [
-        {"url": post["url"], "text": post["content"][:80]}
-        for post in posts
-    ]
-    return {"answer": answer, "links": links}
-
 # Define API routes
-@app.post("/api")
-async def query_knowledge_base(
-    request: QueryRequest,
-    max_results: Optional[int] = MAX_RESULTS,
-    page: Optional[int] = 1,
-    debug: Optional[bool] = False
-):
+@app.post("/query")
+@app.post("/api/")
+@app.post("/")
+
+async def query_knowledge_base(request: QueryRequest):
     try:
-        if not request.question or len(request.question.strip()) < 5:
-            return {
-                "answer": "The question must be at least 5 characters long.",
-                "links": []
-            }
-
+        # Log the incoming request
         logger.info(f"Received query request: question='{request.question[:50]}...', image_provided={request.image is not None}")
-
-        # Always use gpt-4o-mini with AI Pipe, regardless of question content
-        url = "https://aipipe.org/openai/v1/chat/completions"
-        headers = {
-            "Authorization": API_KEY,
-            "Content-Type": "application/json"
-        }
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": request.question}
-                ]
-            }
-        ]
-        # If image is present, add it to the message
-        if request.image:
-            image_content = f"data:image/webp;base64,{request.image}"
-            messages[0]["content"].append({"type": "image_url", "image_url": {"url": image_content}})
-
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": messages
-        }
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    answer = result["choices"][0]["message"]["content"]
-                    # You can add your RAG links logic here if needed
-                    return {"answer": answer, "links": []}
-                else:
-                    error_text = await response.text()
-                    logger.error(f"AI Pipe API error: {error_text}")
-                    return {
-                        "answer": "Sorry, I couldn't process your request due to an internal error.",
-                        "links": []
-                    }
+        
+        if not API_KEY:
+            error_msg = "API_KEY environment variable not set"
+            logger.error(error_msg)
+            return JSONResponse(
+                status_code=500,
+                content={"error": error_msg}
+            )
+            
+        conn = get_db_connection()
+        
+        try:
+            # Process the query (handle text and optional image)
+            logger.info("Processing query and generating embedding")
+            query_embedding = await process_multimodal_query(
+                request.question,
+                request.image
+            )
+            
+            # Find similar content
+            logger.info("Finding similar content")
+            relevant_results = await find_similar_content(query_embedding, conn)
+            
+            if not relevant_results:
+                logger.info("No relevant results found")
+                return {
+                    "answer": "I couldn't find any relevant information in my knowledge base.",
+                    "links": []
+                }
+            
+            # Enrich results with adjacent chunks for better context
+            logger.info("Enriching results with adjacent chunks")
+            enriched_results = await enrich_with_adjacent_chunks(conn, relevant_results)
+            
+            # Generate answer
+            logger.info("Generating answer")
+            llm_response = await generate_answer(request.question, enriched_results)
+            
+            # Parse the response
+            logger.info("Parsing LLM response")
+            result = parse_llm_response(llm_response)
+            
+            # If links extraction failed, create them from the relevant results
+            if not result["links"]:
+                logger.info("No links extracted, creating from relevant results")
+                # Create a dict to deduplicate links from the same source
+                links = []
+                unique_urls = set()
+                
+                for res in relevant_results[:5]:  # Use top 5 results
+                    url = res["url"]
+                    if url not in unique_urls:
+                        unique_urls.add(url)
+                        snippet = res["content"][:100] + "..." if len(res["content"]) > 100 else res["content"]
+                        links.append({"url": url, "text": snippet})
+                
+                result["links"] = links
+            
+            # Log the final result structure (without full content for brevity)
+            logger.info(f"Returning result: answer_length={len(result['answer'])}, num_links={len(result['links'])}")
+            
+            # Return the response in the exact format required
+            return result
+        except Exception as e:
+            error_msg = f"Error processing query: {e}"
+            logger.error(error_msg)
+            logger.error(traceback.format_exc())
+            return JSONResponse(
+                status_code=500,
+                content={"error": error_msg}
+            )
+        finally:
+            conn.close()
     except Exception as e:
-        logger.error(f"Exception in query_knowledge_base: {e}")
+        # Catch any exceptions at the top level
+        error_msg = f"Unhandled exception in query_knowledge_base: {e}"
+        logger.error(error_msg)
         logger.error(traceback.format_exc())
-        return {
-            "answer": "Sorry, I couldn't process your request due to an internal error.",
-            "links": []
-        }
+        return JSONResponse(
+            status_code=500,
+            content={"error": error_msg}
+        )
+
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the TDS's Virtual TA! Use POST /query to ask questions."}
+
 
 # Health check endpoint
 @app.get("/health")
@@ -759,14 +741,5 @@ async def health_check():
             content={"status": "unhealthy", "error": str(e), "api_key_set": bool(API_KEY)}
         )
 
-@app.get("/gemini-test")
-async def gemini_test():
-    try:
-        model = genai.GenerativeModel("gemini-pro")
-        response = await asyncio.to_thread(model.generate_content, "Hello, are you working?")
-        return {"answer": response.text}
-    except Exception as e:
-        return {"error": str(e)}
-
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True) 
