@@ -7,7 +7,6 @@ providers:
       method: POST
       headers:
         Content-Type: application/json
-      apiKey: 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
       body: |
         {
           "question": "{{ question }}"{% if image %},

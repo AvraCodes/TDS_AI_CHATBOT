@@ -1,0 +1,50 @@
+description: "Simple connectivity test between promptfoo and your API"
+
+providers:
+  - id: http
+    config:
+      url: http://localhost:8000/api/test
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: |
+        {
+          "question": "{{ question }}"
+        }
+      transformResponse: json
+
+# Test JSON schema validation
+defaultTest:
+  assert:
+    - type: is-json
+      value:
+        type: object
+        required: [answer, links]
+        properties:
+          answer: { type: string }
+          links:
+            type: array
+            items:
+              type: object
+              required: [url, text]
+              properties:
+                url: { type: string }
+                text: { type: string }
+
+tests:
+  - vars:
+      question: "This is a simple test question"
+    assert:
+      - type: contains
+        transform: output.answer
+        value: "Test response for question"
+      - type: contains
+        transform: JSON.stringify(output.links)
+        value: "example.com"
+
+  - vars:
+      question: "Another test question for connectivity"
+    assert:
+      - type: contains
+        transform: output.answer
+        value: "Test response"

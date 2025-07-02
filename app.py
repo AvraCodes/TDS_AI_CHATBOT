@@ -768,5 +768,16 @@ async def gemini_test():
     except Exception as e:
         return {"error": str(e)}
 
+@app.post("/api/test")
+async def test_endpoint(request: QueryRequest):
+    """Simple test endpoint that doesn't make external API calls"""
+    return QueryResponse(
+        answer=f"Test response for question: {request.question[:50]}...",
+        links=[
+            LinkInfo(url="https://example.com/test1", text="Test link 1"),
+            LinkInfo(url="https://example.com/test2", text="Test link 2")
+        ]
+    )
+
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
